@@ -1,6 +1,5 @@
-/* Healthcare Claims Analysis 
+/* Claims Analysis 
    Syntax: SQL Server
-   Estimated Time to Complete: 30 minutes
 
    1a) What are the top 5 most common valid procedure codes? 
    
@@ -38,7 +37,7 @@ WHERE procedure_code IN (
     ORDER BY COUNT(*) DESC
     )
 
-/* 2. What are the top 5 most common valid diagnosis codes? */
+/* 2. What are the top 5 most common valid diagnosis codes?
 
    J45, R05, C20, I10, A64
    
