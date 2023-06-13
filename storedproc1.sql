@@ -1,11 +1,8 @@
-/* Claims Analysis 
-   Syntax: SQL Server
-
-   1a) What are the top 5 most common valid procedure codes? 
+/* Top 5 most common valid procedure codes:
    
    88175, 87591, 87491, 85049, 88798
    
-   The following code retrieves the top 5 most common valid procedure codes along with the count of occurrences for each code, by joining the dbo.Claims table with the 
+   Code retrieves the top 5 most common valid procedure codes along with the count of occurrences for each code, by joining the dbo.Claims table with the 
    dbo.valid_cpt_codes table and grouping the result by the procedure codes. The final result set is sorted in descending order based on the count of occurrence.
 */
 
@@ -17,11 +14,11 @@ WHERE procedure_code IS NOT NULL
 GROUP BY procedure_code
 ORDER BY count_procedure_code DESC
 
-/* 1b) How many patients are associated with at least one of those procedures?
+/* Patients associated with at least one of the top 5 procedures:
 
    42
    
-   The following code calculates the count of distinct patient IDs associated with the top 5 most common procedure codes by filtering the data in the Claims table based on 
+   Code calculates the count of distinct patient IDs associated with the top 5 most common procedure codes by filtering the data in the Claims table based on 
    the subquery's results.
 */
 
@@ -37,11 +34,11 @@ WHERE procedure_code IN (
     ORDER BY COUNT(*) DESC
     )
 
-/* 2. What are the top 5 most common valid diagnosis codes?
+/* 2. Top 5 most common valid diagnosis codes:
 
    J45, R05, C20, I10, A64
    
-   The following code first adds a new column to the Claims table to store the parsed principal diagnosis code. It then updates the new column with the parsed values from 
+   Code first adds a new column to the Claims table to store the parsed principal diagnosis code. It then updates the new column with the parsed values from 
    the diagnosis_codes column. Finally, it retrieves the top 5 most common principal diagnosis codes and their respective counts, joining with the valid_icd_10_codes table.
 */
 
@@ -60,7 +57,7 @@ ORDER BY count_principal_diagnosis_code DESC
 
 /* Errors
 
-   1. The Date_service column in the Claims table contains incorrect data types (strings) and needs to be updated with values from Untitled column 7. Additionally, there 
+   The Date_service column in the Claims table contains incorrect data types (strings) and needs to be updated with values from Untitled column 7. Additionally, there 
    are chronological inconsistencies between the Date_received and Date_service columns, where the Date_received values precede the corresponding Date_service values. 
 */
 
@@ -71,14 +68,14 @@ SELECT claim_id
 FROM dbo.Claims
 WHERE date_received < date_service
 
-/* 2. Approximately 25% of these claims are missing procedure codes.
+/* Approximately 25% of these claims are missing procedure codes.
 */
 
 SELECT (COUNT(*) * 100.0 / (SELECT COUNT(*) FROM dbo.Claims)) AS percentage_null_procedure_codes
 FROM dbo.Claims
 WHERE procedure_code IS NULL
 
-/* 3. Please review the data entry processes for the procedure code 99999. Although it is the most frequently used procedure code, it does not exist in the valid code list.
+/* Review the data entry processes for the procedure code 99999. Although it is the most frequently used procedure code, it does not exist in the valid code list.
 */
 
 SELECT TOP 1 procedure_code, count(*) as count_procedure_code
