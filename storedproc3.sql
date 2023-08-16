@@ -10,17 +10,19 @@ AS $BODY$
 
 Set-Up
 
-A.	Establish a connection to the VPN using L2TP and provide your Username and Shared Key when prompted.
+A.	Establish a connection to the VPN using L2TP and provide your username and password when prompted.
 B.	In pgAdmin, navigate to the following location: Servers > HealthSnap Onboarding > Databases > healthsnap_onboarding > Schemas > public > Tables.
 C.	Import the required files as CSV. For each file, create a table and name it accordingly. Add columns with data types set to "character varying". Ensure that the column titles exactly match the headers in the CSV files. Additionally, enable the "Header" option under the import settings.
 
-Required Files: newberry_import, newberry_exclusions, newberry_providers, newberry_devices
-
-D.	Utilize the Query Tool to execute the SQL code.
-
+Required Files: newberry_import,
+				newberry_exclusions, 
+				newberry_providers, 
+				newberry_devices, 
+				general_ccm_filtered_diagnoses, 
+				newberry_rpm_filtered_diagnoses
 */
 
--- Standardize the column names
+-- Please execute this code block manually to modify the structure of the table.
 
 DO $$ 
 DECLARE
@@ -53,6 +55,22 @@ BEGIN
         END IF;
     END LOOP;
 END $$;
+
+ALTER TABLE IF EXISTS newberry_import
+ADD COLUMN IF NOT EXISTS "provider_full_name" VARCHAR(255),
+ADD COLUMN IF NOT EXISTS provider_email VARCHAR(255),
+ADD COLUMN IF NOT EXISTS provider_signature VARCHAR(255),
+ADD COLUMN IF NOT EXISTS enrollment_date VARCHAR(255),
+ADD COLUMN IF NOT EXISTS combined_diagnoses VARCHAR(255),
+ADD COLUMN IF NOT EXISTS ccm_filtered_diagnoses VARCHAR(255),
+ADD COLUMN IF NOT EXISTS ccm_qualified VARCHAR(225),
+ADD COLUMN IF NOT EXISTS rpm_filtered_diagnoses VARCHAR(255),
+ADD COLUMN IF NOT EXISTS rpm_qualified VARCHAR(225),
+ADD COLUMN IF NOT EXISTS rpm_monitoring_reason VARCHAR(225),
+ADD COLUMN IF NOT EXISTS rpm_device VARCHAR(225),
+ADD COLUMN IF NOT EXISTS rpm_data_point VARCHAR(225);
+
+-- You can execute the entire code block provided below.
 
 -- 1.	Remove MRNs already in the Exclusions list.
 
@@ -105,17 +123,17 @@ SET "home_phone" = REPLACE(REPLACE(REPLACE(REPLACE("home_phone", '(', ''), ')', 
 
 UPDATE newberry_import
 SET "home_phone" = CASE
-    WHEN "mobile_phone" IS NOT NULL AND "mobile_phone" <> '' THEN "mobile_phone"
+    WHEN "cell_phone" IS NOT NULL AND "cell_phone" <> '' THEN "cell_phone"
     ELSE "home_phone"
     END;
 
--- 9.   Fill blank patient emails using the format newberry+<MRN>@healthsnap.io
+-- 9.   Fill blank patient emails using the format newberry+<MRN>@healthsnap.io.
 
 UPDATE newberry_import
 SET "email" = CONCAT('newberry+', "mrn", '@healthsnap.io')
 WHERE "email" IS NULL OR "email" = '';
 
--- 10.  Check for duplicate emails
+-- 10.  Check for duplicate emails.
 
 SELECT "email", COUNT(*) AS DuplicateCount
 FROM newberry_import
@@ -125,15 +143,8 @@ HAVING COUNT(*) > 1;
 
 -- 11. Add provider emails and signatures.
 
-ALTER TABLE IF EXISTS newberry_import
-ADD COLUMN IF NOT EXISTS "provider_full_name" VARCHAR(255);
-
 UPDATE newberry_import
 SET provider_full_name = provider_first_name || ' ' || provider_last_name;
-
-ALTER TABLE IF EXISTS newberry_import
-ADD COLUMN IF NOT EXISTS provider_email VARCHAR(255),
-ADD COLUMN IF NOT EXISTS provider_signature VARCHAR(255);
 
 UPDATE newberry_import
 SET provider_email = newberry_providers."Email",
@@ -143,16 +154,10 @@ WHERE newberry_import.provider_full_name = newberry_providers."Name";
 
 -- 12. Set enrollment date to today.
 
-ALTER TABLE IF EXISTS newberry_import
-ADD COLUMN IF NOT EXISTS enrollment_date VARCHAR(255);
-
 UPDATE newberry_import
 SET enrollment_date = CURRENT_DATE;
 
 -- 13. Create a column for Combined Diagnoses.
-
-ALTER TABLE IF EXISTS newberry_import
-ADD COLUMN IF NOT EXISTS combined_diagnoses VARCHAR(255);
 
 UPDATE newberry_import
 SET combined_diagnoses = "Pat Def Diag 1 Code" || ',' || "Pat Def Diag 2 Code" || ',' || "Pat Def Diag 3 Code" || ',' || "Pat Def Diag 4 Code" || ',' || "Pat Last Vst Diagnosis Codes";
@@ -173,9 +178,6 @@ SET combined_diagnoses = (
 
 -- 14. Create a column for CCM Filtered Diagnoses.
 
-ALTER TABLE IF EXISTS newberry_import
-ADD COLUMN IF NOT EXISTS ccm_filtered_diagnoses VARCHAR(255);
-
 UPDATE newberry_import
 SET ccm_filtered_diagnoses = (
     SELECT STRING_AGG(DISTINCT general_ccm_diagnoses_filters."Diagnoses", ', ')
@@ -183,19 +185,13 @@ SET ccm_filtered_diagnoses = (
     WHERE general_ccm_diagnoses_filters."Diagnoses" = ANY (STRING_TO_ARRAY(newberry_import.combined_diagnoses, ', '))
 );
 
--- 15. Create a column for CCM Qualified (at least 2 codes)
-
-ALTER TABLE IF EXISTS newberry_import
-ADD COLUMN IF NOT EXISTS ccm_qualified VARCHAR(225);
+-- 15. Create a column for CCM Qualified (at least 2 codes).
 
 UPDATE newberry_import
 SET ccm_qualified = 'CCM'
 WHERE ccm_filtered_diagnoses LIKE '%,%';
 
 -- 16. Create a column for RPM Filtered Diagnoses.
-
-ALTER TABLE IF EXISTS newberry_import
-ADD COLUMN IF NOT EXISTS rpm_filtered_diagnoses VARCHAR(255);
 
 UPDATE newberry_import
 SET rpm_filtered_diagnoses = (
@@ -204,21 +200,13 @@ SET rpm_filtered_diagnoses = (
     WHERE newberry_rpm_diagnoses_filters."Diagnoses" = ANY (STRING_TO_ARRAY(newberry_import.combined_diagnoses, ', '))
 );
 
--- 17. Create a column for RPM Qualified (at least 1 codes)
-
-ALTER TABLE IF EXISTS newberry_import
-ADD COLUMN IF NOT EXISTS rpm_qualified VARCHAR(225);
+-- 17. Create a column for RPM Qualified (at least 1 codes).
 
 UPDATE newberry_import
 SET rpm_qualified = 'RPM'
 WHERE rpm_filtered_diagnoses IS NOT NULL;
 
 -- 18. For all RPM qualified, set monitoring reason, device, and data point.
-
-ALTER TABLE IF EXISTS newberry_import
-ADD COLUMN IF NOT EXISTS rpm_monitoring_reason VARCHAR(225),
-ADD COLUMN IF NOT EXISTS rpm_device VARCHAR(225),
-ADD COLUMN IF NOT EXISTS rpm_data_point VARCHAR(225);
 
 UPDATE newberry_import
 SET rpm_monitoring_reason = 'Monitoring Physiological Data'
@@ -240,14 +228,13 @@ SET rpm_device = CASE
 	ELSE rpm_device
 END;
 
-
 -- 19. Delete patients who do not qualify for either CCM or RPM.
 
 DELETE FROM newberry_import
 WHERE (ccm_qualified IS NULL OR ccm_qualified = '')
   AND (rpm_qualified IS NULL OR rpm_qualified = '');
 
--- 21. Create Edited List
+-- 20. Create Edited List for Customer Success Team.
 
 SELECT
     first_name,
@@ -266,6 +253,8 @@ SELECT
     cell_phone,
     primary_insurance,
     secondary_insurance,
+	provider_first_name,
+	provider_last_name,
     provider_email,
     provider_signature,
     enrollment_date,
@@ -279,7 +268,7 @@ SELECT
     rpm_data_point
 FROM newberry_import;
 
--- 20. Create Stannp import.
+-- 21. Create import for Stannp letters.
 
 SELECT
     first_name,
@@ -288,7 +277,11 @@ SELECT
     address_line2,
     city,
     state,
-    zip
+    zip,
+	provider_first_name,
+	provider_last_name,
+	provider_email,
+	provider_signature
 FROM newberry_import;
 
 $BODY$;
